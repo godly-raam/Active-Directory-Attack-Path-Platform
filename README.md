@@ -1,3 +1,5 @@
+![CI](https://github.com/godly-raam/Active-Directory-Attack-Path-Platform/actions/workflows/ci.yml/badge.svg)
+
 # Azure Active Directory Cyber Range
 
 A fully automated, infrastructure-as-code Active Directory lab in Azure with
