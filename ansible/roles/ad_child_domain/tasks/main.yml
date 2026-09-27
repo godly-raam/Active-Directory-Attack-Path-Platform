@@ -44,12 +44,10 @@
   register: child_promote
   when: (child_domain_role.stdout | trim | int) < 4
   failed_when: child_promote.rc not in [0, 3010]
+  notify: Reboot after child domain promotion
 
-- name: Reboot after child domain promotion
-  ansible.windows.win_reboot:
-    reboot_timeout: 1800
-    post_reboot_delay: 60
-  when: child_promote is changed
+- name: Apply child domain promotion reboot
+  ansible.builtin.meta: flush_handlers
 
 - name: Verify the child domain is online
   ansible.windows.win_shell: |

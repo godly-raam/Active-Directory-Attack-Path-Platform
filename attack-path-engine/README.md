@@ -105,7 +105,7 @@ project-scoped:
 |----------|---------|---------|
 | `USER_LLM_API_KEY` | _(none)_ | Your own key. No key ⇒ deterministic mode. |
 | `USER_LLM_BASE_URL` | `https://api.anthropic.com` | Provider endpoint |
-| `USER_LLM_MODEL` | `claude-sonnet-4-5` | Model name |
+| `USER_LLM_MODEL` | `claude-sonnet-5` | Model name |
 | `AP_ENGINE_OFFLINE` | `0` | `1`/`true` forces deterministic mode |
 | `AP_ENGINE_TOP_N` | `15` | Max candidate paths sent to the LLM (cost control) |
 

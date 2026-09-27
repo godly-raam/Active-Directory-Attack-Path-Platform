@@ -347,7 +347,13 @@ variable "hourly_price_usd" {
 }
 
 variable "hourly_price_usd_gateway" {
-  description = "Estimated USD/hour for a VpnGw1 gateway or Azure Bastion Standard."
+  description = "Estimated USD/hour for a VpnGw1 gateway."
+  type        = number
+  default     = 0.19
+}
+
+variable "hourly_price_usd_bastion" {
+  description = "Estimated USD/hour for Azure Bastion Basic; pricing varies by Bastion SKU and region."
   type        = number
   default     = 0.19
 }

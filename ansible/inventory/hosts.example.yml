@@ -49,11 +49,11 @@ all:
     member_servers:
       hosts:
         SRV-FILE01: { ansible_host: 10.10.20.10, server_role: file }
-        SRV-SQL01:  { ansible_host: 10.10.20.11, server_role: sql }
+        SRV-SQL01: { ansible_host: 10.10.20.11, server_role: sql }
         SRV-ADCS01: { ansible_host: 10.10.20.12, server_role: adcs }
-        SRV-IIS01:  { ansible_host: 10.10.20.13, server_role: iis }
+        SRV-IIS01: { ansible_host: 10.10.20.13, server_role: iis }
         SRV-MGMT01: { ansible_host: 10.10.20.14, server_role: mgmt }
-        SRV-APP01:  { ansible_host: 10.10.20.15, server_role: app }
+        SRV-APP01: { ansible_host: 10.10.20.15, server_role: app }
 
     workstations:
       hosts:

@@ -1,0 +1,5 @@
+---
+- name: Reboot after forest promotion
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+    post_reboot_delay: 60

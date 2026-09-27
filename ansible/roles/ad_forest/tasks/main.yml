@@ -43,12 +43,10 @@
   register: forest_promote
   when: (forest_domain_role.stdout | trim | int) < 4
   failed_when: forest_promote.rc not in [0, 3010]
+  notify: Reboot after forest promotion
 
-- name: Reboot after forest promotion
-  ansible.windows.win_reboot:
-    reboot_timeout: 1800
-    post_reboot_delay: 60
-  when: forest_promote is changed
+- name: Apply forest promotion reboot
+  ansible.builtin.meta: flush_handlers
 
 - name: Wait for the AD service and the new domain to answer
   ansible.windows.win_shell: |

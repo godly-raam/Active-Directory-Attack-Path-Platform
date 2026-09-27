@@ -59,10 +59,19 @@
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      ip -brief address | grep -E '172\.16\.|tun|tap|wg' || echo "NO_VPN_INTERFACE"
+      set -o pipefail
+      ip -brief address | grep -E '172\.16\.|tun|tap|wg'
+      status=(${PIPESTATUS[@]})
+      if [ "${status[0]}" -ne 0 ]; then
+        exit "${status[0]}"
+      fi
+      if [ "${status[1]}" -eq 1 ]; then
+        echo "NO_VPN_INTERFACE"
+        exit 0
+      fi
+      exit "${status[1]}"
   register: kali_vpn
   changed_when: false
-  failed_when: false
 
 - name: Attack-box readiness report
   ansible.builtin.debug:

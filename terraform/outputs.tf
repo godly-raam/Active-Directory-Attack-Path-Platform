@@ -67,7 +67,7 @@ locals {
     for v in local.vm_specs : lookup(var.hourly_price_usd, v.size, var.hourly_price_usd["Standard_B2s"])
   ])
   disk_hourly_total = (length(local.vm_specs) * 0.0133) + (length(local.data_disk_specs) * 0.0133)
-  network_hourly    = (var.enable_vpn_gateway ? var.hourly_price_usd_gateway : 0) + (var.enable_bastion ? var.hourly_price_usd_gateway : 0)
+  network_hourly    = (var.enable_vpn_gateway ? var.hourly_price_usd_gateway : 0) + (var.enable_bastion ? var.hourly_price_usd_bastion : 0)
   est_hourly_total  = local.vm_hourly_total + local.disk_hourly_total + local.network_hourly
 }
 

@@ -41,12 +41,10 @@
   register: join_result
   when: "'True' not in (join_state.stdout | default(''))"
   failed_when: join_result.rc | default(0) != 0
+  notify: Reboot after joining domain
 
-- name: Reboot after joining
-  ansible.windows.win_reboot:
-    reboot_timeout: 900
-    post_reboot_delay: 45
-  when: join_result is changed
+- name: Apply domain join reboot
+  ansible.builtin.meta: flush_handlers
 
 - name: Confirm domain membership
   ansible.windows.win_shell: |

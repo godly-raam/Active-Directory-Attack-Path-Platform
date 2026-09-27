@@ -37,7 +37,7 @@ class Config:
     provider: str = "anthropic"
     api_key: str | None = None
     base_url: str | None = None
-    model: str = "claude-sonnet-4-5"
+    model: str = "claude-sonnet-5"
     offline: bool = False
     top_n: int = 15
     max_depth: int = 12
@@ -60,7 +60,7 @@ class Config:
             provider=os.getenv("AP_ENGINE_LLM_PROVIDER", "anthropic").strip(),
             api_key=os.getenv("USER_LLM_API_KEY") or None,
             base_url=os.getenv("USER_LLM_BASE_URL") or None,
-            model=os.getenv("USER_LLM_MODEL", "claude-sonnet-4-5").strip(),
+            model=os.getenv("USER_LLM_MODEL", "claude-sonnet-5").strip(),
             offline=os.getenv("AP_ENGINE_OFFLINE", "0").strip().lower() in _TRUTHY,
             top_n=int(os.getenv("AP_ENGINE_TOP_N", "15")),
             owned=owned,

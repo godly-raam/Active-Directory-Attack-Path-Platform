@@ -1,0 +1,5 @@
+---
+- name: Reboot after joining domain
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+    post_reboot_delay: 45
