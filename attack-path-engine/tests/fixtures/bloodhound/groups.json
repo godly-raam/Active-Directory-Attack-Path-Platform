@@ -1,0 +1,55 @@
+{
+  "meta": { "type": "groups", "count": 4, "version": 5 },
+  "data": [
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-512",
+      "Properties": {
+        "name": "DOMAIN ADMINS@CORP.CONTOSO.LAB",
+        "samaccountname": "Domain Admins",
+        "domain": "corp.contoso.lab",
+        "highvalue": true,
+        "distinguishedname": "CN=Domain Admins,CN=Users,DC=corp,DC=contoso,DC=lab"
+      },
+      "Members": [
+        { "ObjectIdentifier": "S-1-5-21-1000-2101", "ObjectType": "User" },
+        { "ObjectIdentifier": "S-1-5-21-1000-2102", "ObjectType": "User" }
+      ]
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-1101",
+      "Properties": {
+        "name": "Tier1_Admins",
+        "samaccountname": "Tier1_Admins",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "CN=Tier1_Admins,OU=Groups,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      },
+      "Members": [
+        { "ObjectIdentifier": "S-1-5-21-1000-2102", "ObjectType": "User" }
+      ]
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-551",
+      "Properties": {
+        "name": "Backup Operators",
+        "samaccountname": "Backup-Operators",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "CN=Backup-Operators,OU=Groups,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      },
+      "Members": [
+        { "ObjectIdentifier": "S-1-5-21-2000-2201", "ObjectType": "User" }
+      ]
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-1102",
+      "Properties": {
+        "name": "HelpDesk",
+        "samaccountname": "HelpDesk",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "CN=HelpDesk,OU=Groups,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      },
+      "Members": [
+        { "ObjectIdentifier": "S-1-5-21-1000-2103", "ObjectType": "User" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+---
+# Scenario 7 - ACL abuse.
+#
+# Grants a low-privilege principal rights over high-value objects:
+#   * GenericAll on the Engineering OU, where the seeded Domain Admins live,
+#     enabling password reset / shadow-credential style takeover.
+#   * WriteDACL on the Tier1_Admins group, enabling self-escalation into it.
+
+- name: Seed ACL abuse paths
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.acl_abuse | bool
+  block:
+    - name: Resolve the low-privilege principals
+      ansible.builtin.set_fact:
+        acl_helpdesk_sam: "{{ (user_seed.first_names[4][0] ~ user_seed.last_names[4]) | lower }}"
+        acl_tier1_sam: "{{ (user_seed.first_names[2][0] ~ user_seed.last_names[2]) | lower }}"
+      changed_when: false
+
+    - name: Apply GenericAll and WriteDACL
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $domainDN = (Get-ADDomain).DistinguishedName
+
+        function Grant-ADRight {
+          param([string]$TargetDN, [string]$Sam, $Right, [string]$Label)
+          $sid = (Get-ADUser -Identity $Sam).SID
+          $acl = Get-Acl "AD:\$TargetDN"
+          $exists = $acl.Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid -and
+            $_.ActiveDirectoryRights -eq $Right
+          }
+          if (-not $exists) {
+            $rule = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+              $sid, $Right, [System.Security.AccessControl.AccessControlType]::Allow)
+            $acl.AddAccessRule($rule)
+            Set-Acl "AD:\$TargetDN" $acl
+            Write-Output "GRANTED $Label to $Sam"
+          } else {
+            Write-Output "PRESENT $Label for $Sam"
+          }
+        }
+
+        Grant-ADRight "OU=Engineering,OU=Users,OU=_LAB,$domainDN" "{{ acl_helpdesk_sam }}" `
+          ([System.DirectoryServices.ActiveDirectoryRights]::GenericAll) "GenericAll(OU=Engineering)"
+
+        Grant-ADRight "CN=Tier1_Admins,OU=Groups,OU=_LAB,$domainDN" "{{ acl_tier1_sam }}" `
+          ([System.DirectoryServices.ActiveDirectoryRights]::WriteDacl) "WriteDACL(Tier1_Admins)"
+      register: acl_result
+      changed_when: "'GRANTED' in (acl_result.stdout | default(''))"
+      failed_when: acl_result.rc != 0
+
+    - name: Report ACL changes
+      ansible.builtin.debug:
+        msg: "{{ acl_result.stdout_lines | default([]) }}"

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AD Attack-Path Analysis</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --ink:#e6e9ef; --muted:#9aa4b2;
+          --accent:#4f9cf9; --crit:#ff5c5c; --high:#ff9f43; --med:#ffd166; --low:#8bd450; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  header { padding:32px 40px; border-bottom:1px solid #242833; }
+  h1 { margin:0 0 6px; font-size:24px; }
+  .meta { color:var(--muted); font-size:13px; }
+  main { padding:24px 40px 60px; max-width:1100px; }
+  h2 { margin-top:36px; border-bottom:1px solid #242833; padding-bottom:8px; }
+  .cards { display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }
+  .card { background:var(--panel); border:1px solid #242833; border-radius:10px;
+          padding:14px 18px; min-width:150px; }
+  .card .n { font-size:26px; font-weight:600; color:var(--accent); }
+  .card .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #242833; vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .path { background:var(--panel); border:1px solid #242833; border-radius:12px;
+          padding:18px 20px; margin:18px 0; }
+  .path h3 { margin:0 0 10px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px;
+           background:#20242e; color:var(--muted); margin-right:6px; }
+  .exp { background:var(--accent); color:#08111f; font-weight:700; }
+  code { background:#0b0d12; padding:2px 6px; border-radius:6px; font-size:13px; }
+  .steps li { margin:4px 0; }
+  .sev-critical { color:var(--crit); font-weight:700; }
+  .sev-high { color:var(--high); font-weight:700; }
+  .sev-medium { color:var(--med); font-weight:700; }
+  .sev-low { color:var(--low); font-weight:700; }
+  footer { color:var(--muted); font-size:12px; padding:24px 40px; border-top:1px solid #242833; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Active Directory Attack-Path Analysis</h1>
+  <div class="meta">
+    Generated {{ result.generated_at }} &middot; ap-engine {{ result.engine_version }} &middot;
+    Source <code>{{ result.source }}</code> &middot;
+    Ranking: {{ ("LLM (" ~ result.llm_model ~ ")") if result.llm_used else result.llm_model }}
+  </div>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><div class="n">{{ result.summary.nodes }}</div><div class="l">Nodes</div></div>
+    <div class="card"><div class="n">{{ result.summary.edges }}</div><div class="l">Edges</div></div>
+    <div class="card"><div class="n">{{ result.summary.high_value }}</div><div class="l">High-value</div></div>
+    <div class="card"><div class="n">{{ result.ranked | length }}</div><div class="l">Ranked paths</div></div>
+    <div class="card"><div class="n">{{ result.findings | length }}</div><div class="l">Findings</div></div>
+  </div>
+
+  {% if result.ranked %}
+  <p>Highest-rated chain: <strong>{{ result.ranked[0].path.source_label }}</strong> →
+     <strong>{{ result.ranked[0].path.target_label }}</strong>
+     (exploitability {{ result.ranked[0].exploitability }}/10).</p>
+  {% else %}
+  <p>No complete path to a high-value target was found in this dataset.</p>
+  {% endif %}
+
+  <h2>Ranked escalation paths</h2>
+  {% for item in result.ranked %}
+  <div class="path">
+    <h3>{{ item.rank }}. {{ item.path.source_label }} → {{ item.path.target_label }}</h3>
+    <span class="badge exp">Exploitability {{ item.exploitability }}/10</span>
+    <span class="badge">{{ item.path.label }} · cost {{ item.path.score }} · {{ item.path.hops }} hops</span>
+    <span class="badge">ranked by {{ item.origin }}</span>
+    <span class="badge">mitigation: {{ item.mitigation_complexity }}</span>
+    <ol class="steps">
+      {% for step in item.path.steps %}
+      <li><code>{{ step.source_label }}</code> — <strong>{{ step.kind }}</strong> → <code>{{ step.target_label }}</code></li>
+      {% endfor %}
+    </ol>
+    <p><strong>Why it works:</strong> {{ item.explanation }}</p>
+    <p><strong>Prerequisites:</strong> {{ item.prerequisites }}</p>
+    <p><strong>Remediation:</strong> {{ item.mitigation }}</p>
+    <p><strong>MITRE ATT&amp;CK:</strong> {{ item.path.mitre | join("; ") if item.path.mitre else "n/a" }}</p>
+  </div>
+  {% endfor %}
+
+  <h2>Supporting misconfiguration findings</h2>
+  <table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Affected</th><th>MITRE</th></tr></thead>
+    <tbody>
+    {% for finding in result.findings %}
+      <tr>
+        <td class="sev-{{ finding.severity }}">{{ finding.severity }}</td>
+        <td>{{ finding.category }}<br><small>{{ finding.detail }}</small></td>
+        <td>{{ finding.principals | join(", ") if finding.principals else "-" }}</td>
+        <td>{{ finding.mitre }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Graph composition</h2>
+  <table>
+    <thead><tr><th>Object type</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for kind, count in result.summary.node_kinds.items() %}
+      <tr><td>{{ kind }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</main>
+<footer>
+  Generated by ap-engine. Describes an isolated lab environment owned by the
+  operator; not an authorization to test any other system.
+</footer>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ap-engine"
+version = "0.1.0"
+description = "Attack-path analysis engine: ingests BloodHound JSON, ranks AD escalation paths, explains them with an LLM."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "networkx>=3.2",
+    "PyYAML>=6.0",
+    "Jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.39"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ap-engine = "ap_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ap_engine = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

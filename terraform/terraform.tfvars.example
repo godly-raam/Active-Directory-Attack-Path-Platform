@@ -1,0 +1,54 @@
+# ==========================================================================
+# Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+# ==========================================================================
+
+# Leave empty to use the az CLI active subscription. Set explicitly to avoid
+# accidentally applying to the wrong subscription.
+subscription_id = ""
+
+location = "eastus"
+prefix   = "adrange"
+
+# ---------------------------------------------------------------------------
+# Admin credentials
+# Leave admin_password empty to generate a strong password and store it in
+# Key Vault. Retrieve it with:
+#   az keyvault secret show --vault-name <name> --name range-admin-password \
+#     --query value -o tsv
+# ---------------------------------------------------------------------------
+admin_username = "rangeadmin"
+admin_password = ""
+
+# ---------------------------------------------------------------------------
+# Topology - defaults produce a 15-host range:
+#   3 DCs (2 forests + 1 child domain) + 6 member servers + 6 workstations
+# ---------------------------------------------------------------------------
+workstation_count = 6
+
+# "server2022" works on a plain free trial. "windows11" needs an eligible
+# Windows client license / Visual Studio subscription.
+workstation_os = "server2022"
+
+# ---------------------------------------------------------------------------
+# Access
+# ---------------------------------------------------------------------------
+enable_vpn_gateway = true
+enable_bastion     = false
+vpn_gateway_sku    = "VpnGw1"
+
+# ---------------------------------------------------------------------------
+# Cost safety net
+# ---------------------------------------------------------------------------
+enable_auto_shutdown    = true
+auto_shutdown_time      = "2300"
+auto_shutdown_timezone  = "UTC"
+
+# ---------------------------------------------------------------------------
+# Sizing - the single biggest cost lever. B2s is the practical floor for
+# Server-with-GUI; SQL gets B2ms in the defaults inside variables.tf.
+# ---------------------------------------------------------------------------
+vm_size_dc           = "Standard_B2s"
+vm_size_workstation  = "Standard_B2s"
+vm_size_standard     = "Standard_B2s"

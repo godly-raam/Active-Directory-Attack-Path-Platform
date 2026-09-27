@@ -1,0 +1,43 @@
+# ==========================================================================
+# Convenience wrapper around SharpHound for the range.
+#
+# Runs a full collection and drops the zip in the pickup share. Intended to be
+# executed on the management server, or from any domain-joined host with the
+# SharpHound binary available.
+# ==========================================================================
+param(
+    [string]$SharePath = "{{ sharphound_share_path }}",
+    [string]$Domain    = "{{ primary_domain }}",
+    [string]$ZipName   = "{{ sharphound_zip_name }}",
+    [string[]]$CollectionMethods = @('Group', 'LocalAdmin', 'RDP', 'DCOM', 'PSRemote', 'Session', 'Trusts', 'ACL', 'Container', 'GPOLocalGroup', 'ObjectProps', 'SPNTargets', 'CertServices')
+)
+
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = (Get-Location).Path
+$sharphound = Join-Path $repoRoot 'SharpHound.exe'
+if (-not (Test-Path $sharphound)) {
+    # Fall back to alongside this script.
+    $sharphound = Join-Path $PSScriptRoot 'SharpHound.exe'
+}
+if (-not (Test-Path $sharphound)) {
+    throw "SharpHound.exe not found. Place it in $repoRoot or next to this script."
+}
+
+$outDir = Join-Path $env:TEMP ("bh-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+
+Write-Host "Collecting from $Domain into $outDir ..."
+& $sharphound -c All --CollectAllProperties --Domain $Domain --OutputDirectory $outDir --ZipFileName $ZipName
+
+$zip = Join-Path $outDir $ZipName
+if (-not (Test-Path $zip)) {
+    throw "SharpHound did not produce $zip"
+}
+
+$dest = Join-Path $SharePath $ZipName
+Copy-Item -Path $zip -Destination $dest -Force
+Write-Host "Collection complete: $dest"
+Write-Host "From Kali, fetch it with:"
+Write-Host "  smbclient //{{ inventory_hostname }}/{{ sharphound_share_name }} -U {{ ansible_user }} -c 'get $ZipName'"
+Write-Host "  # or: impacket-smbserver / nxc smb ... --get-file"

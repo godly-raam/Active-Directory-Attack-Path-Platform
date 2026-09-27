@@ -1,0 +1,60 @@
+---
+# Scenario 8 - DCSync rights misconfiguration.
+#
+# Grants a non-admin service account the directory replication extended rights
+# on the domain naming context. Impacket secretsdump / Mimikatz dcsync can then
+# replicate password hashes without touching a domain controller.
+
+- name: Seed DCSync rights
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.dcsync | bool
+  block:
+    - name: Grant replication rights to a service account
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $domainDN = (Get-ADDomain).DistinguishedName
+        $svc = 'svc_dcsync'
+
+        if (-not (Get-ADUser -Filter "SamAccountName -eq '$svc'" -ErrorAction SilentlyContinue)) {
+          $ou = "OU=ServiceAccounts,OU=_LAB,$domainDN"
+          New-ADUser -Name $svc -SamAccountName $svc `
+            -UserPrincipalName "$svc@{{ primary_domain }}" `
+            -Path $ou -Description "Service account - DCSync rights for scenario 8" `
+            -AccountPassword (ConvertTo-SecureString '{{ user_seed.service_password }}' -AsPlainText -Force) `
+            -Enabled $true -PasswordNeverExpires $true
+          Write-Output "CREATED $svc"
+        }
+
+        $sid = (Get-ADUser -Identity $svc).SID
+        # DS-Replication-Get-Changes / -All / -In-Filtered-Set
+        $guids = @(
+          [Guid]'1131f6aa-9c07-11d1-f79f-00c04fc2dcd2',
+          [Guid]'1131f6ad-9c07-11d1-f79f-00c04fc2dcd2',
+          [Guid]'89e95b76-444d-4c62-991a-0facbeda640c'
+        )
+        $acl = Get-Acl "AD:\$domainDN"
+        foreach ($g in $guids) {
+          $exists = $acl.Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid -and
+            $_.ObjectType -eq $g
+          }
+          if (-not $exists) {
+            $rule = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+              $sid,
+              [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight,
+              [System.Security.AccessControl.AccessControlType]::Allow,
+              $g)
+            $acl.AddAccessRule($rule)
+            Write-Output "GRANTED $g"
+          }
+        }
+        Set-Acl "AD:\$domainDN" $acl
+      register: dcsync_result
+      changed_when: "'GRANTED' in (dcsync_result.stdout | default('')) or 'CREATED' in (dcsync_result.stdout | default(''))"
+      failed_when: dcsync_result.rc != 0
+
+    - name: Report DCSync changes
+      ansible.builtin.debug:
+        msg: "{{ dcsync_result.stdout_lines | default([]) }}"

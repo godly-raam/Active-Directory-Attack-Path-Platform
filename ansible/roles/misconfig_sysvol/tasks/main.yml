@@ -1,0 +1,31 @@
+---
+# Scenario 9 (bonus) - GPO / SYSVOL credential exposure.
+#
+# Creates a Group Policy Preferences item whose password is stored as an
+# AES-encrypted cpassword using Microsoft's published key. Recoverable offline.
+
+- name: Seed SYSVOL credential exposure
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.sysvol_creds | bool
+  block:
+    - name: Ensure the staging directory exists
+      ansible.windows.win_file:
+        path: C:\Range
+        state: directory
+
+    - name: Render the SYSVOL credential script
+      ansible.windows.win_template:
+        src: Invoke-SysvolCreds.ps1.j2
+        dest: C:\Range\Invoke-SysvolCreds.ps1
+
+    - name: Create the GPP credential GPO and drop Groups.xml
+      ansible.windows.win_shell: |
+        & "C:\Range\Invoke-SysvolCreds.ps1"
+      register: sysvol_result
+      changed_when: "'WROTE' in (sysvol_result.stdout | default(''))"
+      failed_when: sysvol_result.rc != 0
+
+    - name: Report SYSVOL changes
+      ansible.builtin.debug:
+        msg: "{{ sysvol_result.stdout_lines | default([]) }}"

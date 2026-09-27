@@ -1,0 +1,51 @@
+---
+# Stage SharpHound and an SMB share on the management server so collection
+# output can be picked up from Kali over the VPN.
+#
+# The SharpHound binary itself is NOT vendored in this repo (see .gitignore).
+# Drop it at roles/sharphound/files/SharpHound.exe before running, or install
+# it from your own tooling. The role warns and continues if it is absent.
+
+- name: Check whether a SharpHound binary has been provided
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/SharpHound.exe"
+  register: sharphound_bin
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+- name: Ensure the pickup directory exists
+  ansible.windows.win_file:
+    path: "{{ sharphound_share_path }}"
+    state: directory
+
+- name: Create the SMB pickup share
+  ansible.windows.win_share:
+    name: "{{ sharphound_share_name }}"
+    path: "{{ sharphound_share_path }}"
+    description: "AD range data pickup (SharpHound, exports)"
+    full: "{{ ansible_user }}"
+    state: present
+
+- name: Copy SharpHound to the management server
+  ansible.windows.win_copy:
+    src: SharpHound.exe
+    dest: "{{ sharphound_share_path }}\\SharpHound.exe"
+  when: sharphound_bin.stat.exists
+
+- name: Warn when SharpHound was not provided
+  ansible.builtin.debug:
+    msg: >-
+      SharpHound.exe not found in roles/sharphound/files/. The share is ready;
+      drop the collector in there manually or via the VPN. See
+      docs/scenarios/README.md for the collection workflow.
+  when: not sharphound_bin.stat.exists
+
+- name: Render a collection helper script
+  ansible.windows.win_template:
+    src: Collect-BloodHound.ps1.j2
+    dest: "{{ sharphound_share_path }}\\Collect-BloodHound.ps1"
+
+- name: Report share state
+  ansible.builtin.debug:
+    msg: "Pickup share: \\\\{{ inventory_hostname }}\\{{ sharphound_share_name }} -> {{ sharphound_share_path }}"

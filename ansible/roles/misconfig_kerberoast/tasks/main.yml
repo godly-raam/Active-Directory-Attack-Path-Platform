@@ -1,0 +1,44 @@
+---
+# Scenario 1 - Kerberoastable service accounts.
+#
+# Creates service accounts with SPNs and a deliberately weak, non-expiring
+# password. Any authenticated user can request a service ticket for these
+# accounts and crack it offline.
+
+- name: Seed Kerberoastable service accounts
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.kerberoast | bool
+  block:
+    - name: Create service accounts and register SPNs
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $domainDN = (Get-ADDomain).DistinguishedName
+        $ou = "OU=ServiceAccounts,OU=_LAB,$domainDN"
+        $password = '{{ user_seed.service_password }}'
+        $svcs = @(
+          @{ Sam = 'svc_sql';     Spn = 'MSSQLSvc/SRV-SQL01.{{ primary_domain }}:1433' },
+          @{ Sam = 'svc_iis';     Spn = 'HTTP/SRV-IIS01.{{ primary_domain }}' },
+          @{ Sam = 'svc_backup';  Spn = 'HOST/SRV-FILE01.{{ primary_domain }}' },
+          @{ Sam = 'svc_monitor'; Spn = 'HOST/SRV-MGMT01.{{ primary_domain }}' }
+        )
+        foreach ($s in $svcs) {
+          if (-not (Get-ADUser -Filter "SamAccountName -eq '$($s.Sam)'" -ErrorAction SilentlyContinue)) {
+            New-ADUser -Name $s.Sam -SamAccountName $s.Sam `
+              -UserPrincipalName "$($s.Sam)@{{ primary_domain }}" `
+              -Path $ou `
+              -Description "Service account - SPN registered for scenario 1" `
+              -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force) `
+              -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false
+            Write-Output "CREATED $($s.Sam)"
+          }
+          Set-ADUser -Identity $s.Sam -ServicePrincipalNames @{Add = $s.Spn}
+        }
+      register: kerberoast_result
+      changed_when: "'CREATED' in (kerberoast_result.stdout | default(''))"
+      failed_when: kerberoast_result.rc != 0
+
+    - name: Report Kerberoastable principals
+      ansible.builtin.debug:
+        msg: "{{ kerberoast_result.stdout_lines | default([]) }}"

@@ -1,0 +1,39 @@
+---
+# Scenario 4 - Constrained delegation misconfiguration.
+#
+# Grants the designated server protocol transition (TrustedToAuthForDelegation)
+# plus permission to delegate to a specific downstream SPN. Combined with
+# protocol transition this is the classic S4U2Self + S4U2Proxy abuse path.
+
+- name: Seed constrained delegation misconfiguration
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.constrained_delegation | bool
+  block:
+    - name: Configure protocol transition and allowed-to-delegate target
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $host = '{{ constrained_delegation_host }}'
+        $spn  = '{{ constrained_delegation_target_spn }}'
+
+        Set-ADComputer -Identity $host -TrustedToAuthForDelegation $true
+
+        $computer = Get-ADComputer -Identity $host
+        $current = @($computer.'msDS-AllowedToDelegateTo')
+        if ($current -notcontains $spn) {
+          Set-ADObject -Identity $computer.DistinguishedName -Add @{ 'msDS-AllowedToDelegateTo' = @($spn) }
+          Write-Output "ADDED $spn"
+        } else {
+          Write-Output "PRESENT $spn"
+        }
+
+        $after = Get-ADComputer -Identity $host -Properties 'msDS-AllowedToDelegateTo', TrustedToAuthForDelegation
+        Write-Output ("transition={0} targets={1}" -f $after.TrustedToAuthForDelegation, ($after.'msDS-AllowedToDelegateTo' -join ','))
+      register: constrained_result
+      changed_when: "'ADDED' in (constrained_result.stdout | default(''))"
+      failed_when: constrained_result.rc != 0
+
+    - name: Report constrained delegation state
+      ansible.builtin.debug:
+        msg: "{{ constrained_delegation_host }}: {{ constrained_result.stdout_lines | default([]) }}"

@@ -1,0 +1,41 @@
+---
+# Scenario 2 - AS-REP roastable accounts.
+#
+# Accounts with Kerberos pre-authentication disabled. Their AS-REP is returned
+# without proving knowledge of the password and can be cracked offline.
+
+- name: Seed AS-REP roastable accounts
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.asrep | bool
+  block:
+    - name: Create accounts with pre-authentication disabled
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $domainDN = (Get-ADDomain).DistinguishedName
+        $userOU = "OU=Users,OU=_LAB,$domainDN"
+        $svcOU = "OU=ServiceAccounts,OU=_LAB,$domainDN"
+        $password = '{{ user_seed.service_password }}'
+        $targets = @(
+          @{ Sam = 'nopreauth_svc';     OU = $svcOU;  Desc = 'Legacy app account - preauth disabled for scenario 2' },
+          @{ Sam = 'legacy_kiosk';      OU = $userOU; Desc = 'Kiosk account - preauth disabled for scenario 2' }
+        )
+        foreach ($t in $targets) {
+          if (-not (Get-ADUser -Filter "SamAccountName -eq '$($t.Sam)'" -ErrorAction SilentlyContinue)) {
+            New-ADUser -Name $t.Sam -SamAccountName $t.Sam `
+              -UserPrincipalName "$($t.Sam)@{{ primary_domain }}" `
+              -Path $t.OU -Description $t.Desc `
+              -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force) `
+              -Enabled $true -ChangePasswordAtLogon $false
+            Write-Output "CREATED $($t.Sam)"
+          }
+          Set-ADAccountControl -Identity $t.Sam -DoesNotRequirePreAuth $true
+        }
+      register: asrep_result
+      changed_when: "'CREATED' in (asrep_result.stdout | default(''))"
+      failed_when: asrep_result.rc != 0
+
+    - name: Report AS-REP roastable principals
+      ansible.builtin.debug:
+        msg: "{{ asrep_result.stdout_lines | default([]) }}"

@@ -1,0 +1,105 @@
+---
+# Scenario 5 - AD CS abuse (ESC1 template + ESC8 web enrollment).
+#
+# 1. Installs an Enterprise Root CA and the HTTP web-enrollment endpoints.
+#    Leaving web enrollment on HTTP is what makes the ESC8 NTLM relay path
+#    available.
+# 2. Creates an ESC1-style template (enrollee supplies subject + Client Auth
+#    EKU + Domain Users enroll).
+#
+# ESC1 template creation is version-sensitive, so it fails soft: if the ADSI
+# copy does not work in your environment the role reports a clear warning and
+# docs/scenarios/05-adcs-esc1.md gives the manual steps.
+
+- name: Seed AD CS abuse
+  when: misconfig.adcs_esc1 | bool or misconfig.adcs_esc8 | bool
+  block:
+    - name: Install AD CS role, web enrollment and management tools
+      ansible.windows.win_feature:
+        name:
+          - ADCS-Cert-Authority
+          - ADCS-Web-Enrollment
+          - ADCS-Enroll-Web-Svc
+          - ADCS-Enroll-Web-Pol
+          - RSAT-ADCS
+        include_management_tools: true
+        state: present
+
+    - name: Install an Enterprise Root CA
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ADCSDeployment
+        $svc = Get-Service -Name CertSvc -ErrorAction SilentlyContinue
+        if ($svc) {
+          $cfg = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration" -ErrorAction SilentlyContinue
+          if ($cfg) { Write-Output "PRESENT CA already configured"; exit 0 }
+        }
+        Install-ADCSEnterpriseCA `
+          -CACommonName "CORP-Range-CA" `
+          -CAType "EnterpriseRootCA" `
+          -CryptoProviderName "RSA#Microsoft Software Key Storage Provider" `
+          -KeyLength 2048 `
+          -HashAlgorithmName "SHA256" `
+          -ValidityPeriod "Years" `
+          -ValidityPeriodUnits 5 `
+          -Force
+        Write-Output "CREATED CA installed"
+      register: adcs_ca_result
+      changed_when: "'CREATED' in (adcs_ca_result.stdout | default(''))"
+      failed_when: adcs_ca_result.rc != 0
+
+    - name: Wait for the CA service to answer
+      ansible.windows.win_shell: |
+        $ok = $false
+        for ($i = 0; $i -lt 30; $i++) {
+          $out = & certutil -ping 2>&1
+          if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+          Start-Sleep -Seconds 10
+        }
+        if (-not $ok) { "not-ready"; exit 1 }
+        "ready"
+      register: adcs_ping
+      changed_when: false
+      retries: 3
+      delay: 20
+      until: adcs_ping is succeeded
+
+    - name: Stage the ESC1 template script
+      when: misconfig.adcs_esc1 | bool
+      ansible.windows.win_copy:
+        src: Invoke-Esc1Template.ps1
+        dest: C:\Range\Invoke-Esc1Template.ps1
+
+    - name: Create the ESC1 template (fails soft)
+      when: misconfig.adcs_esc1 | bool
+      ansible.windows.win_shell: |
+        & "C:\Range\Invoke-Esc1Template.ps1"
+      register: esc1_result
+      failed_when: false
+      changed_when: "'OK template' in (esc1_result.stdout | default(''))"
+
+    - name: Warn if ESC1 template creation did not complete
+      when:
+        - misconfig.adcs_esc1 | bool
+        - "'OK ' not in (esc1_result.stdout | default(''))"
+      ansible.builtin.debug:
+        msg:
+          - "ESC1 template creation did not report success on {{ inventory_hostname }}."
+          - "stdout: {{ esc1_result.stdout | default('') }}"
+          - "stderr: {{ esc1_result.stderr | default('') }}"
+          - "Fall back to the manual steps in docs/scenarios/05-adcs-esc1.md."
+
+    - name: Confirm web enrollment endpoint is bound
+      ansible.windows.win_shell: |
+        $site = Get-WebApplication -Site 'Default Web Site' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*CertSrv*' }
+        if ($site) { "PRESENT " + ($site.Path -join ',') } else { "MISSING" }
+      register: esc8_result
+      changed_when: false
+      failed_when: false
+
+    - name: Report AD CS state
+      ansible.builtin.debug:
+        msg:
+          - "CA: {{ adcs_ca_result.stdout | default('') | trim }}"
+          - "ESC1: {{ esc1_result.stdout | default('skipped') | trim }}"
+          - "Web enrollment: {{ esc8_result.stdout | default('unknown') | trim }}"

@@ -1,0 +1,37 @@
+---
+- name: Wait for WinRM to become reachable
+  ansible.windows.win_ping:
+  register: winrm_ping
+  until: winrm_ping is succeeded
+  retries: 30
+  delay: 10
+
+- name: Assert the host answers with the expected name
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.hostname is defined
+      - ansible_facts.hostname | upper == inventory_hostname | upper
+    fail_msg: >-
+      Hostname mismatch: WinRM answered as '{{ ansible_facts.hostname }}' but
+      inventory expects '{{ inventory_hostname }}'. Check for a stale DHCP lease
+      or a VM that booted from the wrong image.
+    success_msg: "Host {{ inventory_hostname }} reachable and correctly named."
+
+- name: Ensure PowerShell execution policy allows the range scripts
+  ansible.windows.win_shell: |
+    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine -Force
+    Write-Output "ok"
+  changed_when: false
+
+- name: Ensure the PowerShell Gallery TLS setting is sane (PS 5.1)
+  ansible.windows.win_shell: |
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Write-Output "ok"
+  changed_when: false
+
+- name: Show tier/role as understood by Ansible
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} -> kind={{ hostvars[inventory_hostname].dc_kind | default('member') }}
+      role={{ hostvars[inventory_hostname].server_role | default(hostvars[inventory_hostname].dc_kind | default('workstation')) }}
+      domain={{ hostvars[inventory_hostname].dc_domain | default(primary_domain) }}

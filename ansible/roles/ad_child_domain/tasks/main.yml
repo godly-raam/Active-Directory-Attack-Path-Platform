@@ -1,0 +1,62 @@
+---
+# Promote a host to a child domain inside the primary forest.
+# Default topology: DC03 -> emea.corp.contoso.lab (child of corp.contoso.lab).
+#
+# The child DC's NIC DNS already points at the parent DC
+# (primary_dc_ip) because every non-parent host uses the primary DC as
+# resolver, so parent name resolution works without extra setup.
+
+- name: Read current machine domain role
+  ansible.windows.win_shell: |
+    (Get-CimInstance -ClassName Win32_ComputerSystem).DomainRole
+  register: child_domain_role
+  changed_when: false
+
+- name: Install AD DS and management tooling
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - DNS
+      - RSAT-AD-Tools
+      - RSAT-AD-PowerShell
+      - GPMC
+    include_management_tools: true
+    state: present
+  when: (child_domain_role.stdout | trim | int) < 4
+
+- name: Promote host to child domain (no inline reboot)
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ADDSDeployment
+    $dsrm = ConvertTo-SecureString "{{ dsrm_password }}" -AsPlainText -Force
+    $parentCred = New-Object System.Management.Automation.PSCredential(
+      "{{ ansible_user }}@{{ primary_domain }}", $dsrm)
+    Install-ADDSDomain `
+      -DomainType "ChildDomain" `
+      -NewDomainName "{{ dc_domain.split('.')[0] }}" `
+      -ParentDomainName "{{ primary_domain }}" `
+      -DomainNetbiosName "{{ dc_netbios }}" `
+      -InstallDns:$true `
+      -Credential $parentCred `
+      -SafeModeAdministratorPassword $dsrm `
+      -NoRebootOnCompletion:$true `
+      -Force
+  register: child_promote
+  when: (child_domain_role.stdout | trim | int) < 4
+  failed_when: child_promote.rc not in [0, 3010]
+
+- name: Reboot after child domain promotion
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+    post_reboot_delay: 60
+  when: child_promote is changed
+
+- name: Verify the child domain is online
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    (Get-ADDomain).DNSRoot
+  register: child_domain_check
+  until: child_domain_check is succeeded and dc_domain in child_domain_check.stdout
+  retries: 30
+  delay: 20
+  changed_when: false

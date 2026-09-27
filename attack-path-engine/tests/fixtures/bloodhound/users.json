@@ -1,0 +1,70 @@
+{
+  "meta": { "type": "users", "count": 6, "version": 5 },
+  "data": [
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2101",
+      "Properties": {
+        "name": "Alice Anderson",
+        "samaccountname": "aliceanderson",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "admincount": true,
+        "distinguishedname": "CN=aliceanderson,OU=Engineering,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2102",
+      "Properties": {
+        "name": "Bob Brown",
+        "samaccountname": "bobbrown",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "admincount": true,
+        "distinguishedname": "CN=bobbrown,OU=Engineering,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2103",
+      "Properties": {
+        "name": "Carol Clark",
+        "samaccountname": "carolclark",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "admincount": false,
+        "distinguishedname": "CN=carolclark,OU=Users,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2104",
+      "Properties": {
+        "name": "svc_sql",
+        "samaccountname": "svc_sql",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "serviceprincipalnames": ["MSSQLSvc/SRV-SQL01.corp.contoso.lab:1433"],
+        "distinguishedname": "CN=svc_sql,OU=ServiceAccounts,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2105",
+      "Properties": {
+        "name": "nopreauth_svc",
+        "samaccountname": "nopreauth_svc",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "dontreqpreauth": true,
+        "distinguishedname": "CN=nopreauth_svc,OU=ServiceAccounts,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-2106",
+      "Properties": {
+        "name": "svc_dcsync",
+        "samaccountname": "svc_dcsync",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "distinguishedname": "CN=svc_dcsync,OU=ServiceAccounts,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    }
+  ]
+}

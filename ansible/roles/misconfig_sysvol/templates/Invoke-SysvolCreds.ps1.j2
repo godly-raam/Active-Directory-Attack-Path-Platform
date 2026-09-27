@@ -1,0 +1,60 @@
+# ==========================================================================
+# Rendered on the control node, executed on the primary DC.
+#
+# Creates a Group Policy Preferences "Local Users" item whose password is
+# stored as an AES-encrypted cpassword. Microsoft published the AES key, so it
+# is trivially recoverable - the real-world finding this scenario reproduces.
+# ==========================================================================
+$ErrorActionPreference = 'Stop'
+Import-Module GroupPolicy
+Import-Module ActiveDirectory
+
+$gpoName  = 'LAB-GPP-Creds'
+$domain   = '{{ primary_domain }}'
+$domainDN = (Get-ADDomain).DistinguishedName
+$plain    = '{{ sysvol_gpp_plaintext_password }}'
+
+if (-not (Get-GPO -Name $gpoName -ErrorAction SilentlyContinue)) {
+    New-GPO -Name $gpoName -Comment 'Local admin password pushed via GPP (scenario 9).' | Out-Null
+    Write-Output "GPO+ $gpoName"
+}
+$gpo  = Get-GPO -Name $gpoName
+$guid = $gpo.Id.ToString('B')
+
+# Microsoft's published GPP AES key. IV is all zeroes, plaintext is UTF-16LE,
+# PKCS7 padding.
+$key = [byte[]]@(
+    0x4e,0x99,0x06,0xe8,0xfc,0xb6,0x6c,0xc9,0xfa,0xf4,0x93,0x10,0x62,0x0f,0xfe,0xe8,
+    0xf4,0x96,0xe8,0x06,0xcc,0x05,0x79,0x90,0x20,0x9b,0x09,0xa4,0x33,0xb6,0x6c,0x1b)
+
+$aes = [System.Security.Cryptography.Aes]::Create()
+$aes.Mode    = [System.Security.Cryptography.CipherMode]::CBC
+$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+$aes.Key     = $key
+$aes.IV      = New-Object byte[] 16
+$encryptor   = $aes.CreateEncryptor()
+$plainBytes  = [System.Text.Encoding]::Unicode.GetBytes($plain)
+$enc         = $encryptor.TransformFinalBlock($plainBytes, 0, $plainBytes.Length)
+$cpassword   = [Convert]::ToBase64String($enc)
+
+$base = "$env:SystemRoot\SYSVOL\sysvol\$domain\Policies\$guid\User\Preferences\Groups"
+$file = Join-Path $base 'Groups.xml'
+if (-not (Test-Path $base)) { New-Item -ItemType Directory -Path $base -Force | Out-Null }
+
+$uid = [Guid]::NewGuid().ToString('B')
+$xmlLines = @(
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<Groups clsid="{3125E937-EB16-4b4c-9934-544FC6D24D26}">',
+    ('  <User clsid="{DF5F1855-51E5-4d24-8B1A-D9BDE98BA1D1}" name="LocalAdmin" image="2" changed="2024-01-01 00:00:00" uid="' + $uid + '">'),
+    ('    <Properties action="C" fullName="Local Administrator" description="Managed by IT" cpassword="' + $cpassword + '" changeLogon="0" noChange="0" neverExpires="1" acctDisabled="0" userName="LocalAdmin"/>'),
+    '  </User>',
+    '</Groups>'
+)
+Set-Content -Path $file -Value ($xmlLines -join "`r`n") -Encoding UTF8
+Write-Output "WROTE $file"
+
+$linked = Get-GPInheritance -Target $domainDN | Select-Object -ExpandProperty GpoLinks | Where-Object { $_.DisplayName -eq $gpoName }
+if (-not $linked) {
+    New-GPLink -Name $gpoName -Target $domainDN | Out-Null
+    Write-Output "LINKED $gpoName"
+}

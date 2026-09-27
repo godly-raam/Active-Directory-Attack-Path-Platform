@@ -1,0 +1,98 @@
+---
+# ==========================================================================
+# End-to-end build of the range.
+#
+# Ordering matters: forests -> child domain -> trusts -> structure -> joins ->
+# misconfigurations -> SharpHound -> local Kali verification.
+#
+# Select a subset with tags, e.g.:
+#   ansible-playbook site.yml --tags kerberoast
+#   ansible-playbook site.yml --skip-tags misconfig
+# ==========================================================================
+
+- name: Preflight - WinRM reachability and baseline host settings
+  hosts: domain_controllers:member_servers:workstations
+  gather_facts: true
+  tags: [always, preflight]
+  roles:
+    - preflight
+
+- name: Promote forest root domain controllers
+  hosts: domain_controllers
+  gather_facts: true
+  tags: [ad, forest]
+  roles:
+    - role: ad_forest
+      when: dc_kind == 'forest_root'
+
+- name: Promote child domain controller
+  hosts: domain_controllers
+  gather_facts: true
+  tags: [ad, child]
+  roles:
+    - role: ad_child_domain
+      when: dc_kind == 'child'
+
+- name: Establish forest trusts
+  hosts: domain_controllers
+  gather_facts: true
+  tags: [ad, trust]
+  roles:
+    - role: ad_trust
+      when: dc_kind == 'forest_root'
+
+- name: Build directory structure (OUs, users, groups, GPOs)
+  hosts: domain_controllers
+  gather_facts: true
+  tags: [ad, structure]
+  roles:
+    - role: ad_structure
+      when: dc_domain == primary_domain
+
+- name: Join member servers and workstations to the domain
+  hosts: member_servers:workstations
+  gather_facts: true
+  tags: [ad, join]
+  roles:
+    - domain_join
+
+# --------------------------------------------------------------------------
+# Misconfigurations. Every role is independently tagged and internally gated
+# on the matching `misconfig.<name>` toggle in group_vars/all.yml.
+# --------------------------------------------------------------------------
+
+- name: Seed domain-level misconfigurations
+  hosts: domain_controllers
+  gather_facts: true
+  tags: [misconfig]
+  roles:
+    - { role: misconfig_kerberoast, tags: [kerberoast] }
+    - { role: misconfig_asrep, tags: [asrep] }
+    - { role: misconfig_acl, tags: [acl] }
+    - { role: misconfig_dcsync, tags: [dcsync] }
+    - { role: misconfig_sysvol, tags: [sysvol] }
+    - { role: misconfig_trust_abuse, tags: [trustabuse] }
+    - { role: misconfig_unconstrained_delegation, tags: [unconstrained] }
+    - { role: misconfig_constrained_delegation, tags: [constrained] }
+
+- name: Seed AD CS abuse configurations
+  hosts: adcs_servers
+  gather_facts: true
+  tags: [misconfig, adcs]
+  roles:
+    - misconfig_adcs
+
+- name: Stage SharpHound collector and pickup share
+  hosts: management_servers
+  gather_facts: true
+  tags: [sharphound]
+  roles:
+    - sharphound
+
+- name: Verify Kali attack box tooling and VPN reachability (runs locally)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [kali, verify]
+  roles:
+    - kali_verify

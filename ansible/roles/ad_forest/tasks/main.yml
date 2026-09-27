@@ -1,0 +1,67 @@
+---
+# Promote a Windows Server host to the root of a brand new forest.
+#
+# Runs on every host with dc_kind == forest_root. In the default topology that
+# is DC01 (corp.contoso.lab) and DC02 (partner.fabrikam.lab) - two separate
+# forests linked later by ad_trust.
+
+- name: Read current machine domain role
+  ansible.windows.win_shell: |
+    (Get-CimInstance -ClassName Win32_ComputerSystem).DomainRole
+  register: forest_domain_role
+  changed_when: false
+
+- name: Install AD DS, DNS and management tooling
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - DNS
+      - RSAT-AD-Tools
+      - RSAT-AD-PowerShell
+      - GPMC
+    include_management_tools: true
+    state: present
+  when: (forest_domain_role.stdout | trim | int) < 4
+
+- name: Promote host to forest root (no inline reboot)
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ADDSDeployment
+    $dsrm = ConvertTo-SecureString "{{ dsrm_password }}" -AsPlainText -Force
+    Install-ADDSForest `
+      -DomainName "{{ dc_domain }}" `
+      -DomainNetbiosName "{{ dc_netbios }}" `
+      -DomainMode "WinThreshold" `
+      -ForestMode "WinThreshold" `
+      -InstallDns:$true `
+      -DatabasePath "C:\Windows\NTDS" `
+      -LogPath "C:\Windows\NTDS" `
+      -SysvolPath "C:\Windows\SYSVOL" `
+      -SafeModeAdministratorPassword $dsrm `
+      -NoRebootOnCompletion:$true `
+      -Force
+  register: forest_promote
+  when: (forest_domain_role.stdout | trim | int) < 4
+  failed_when: forest_promote.rc not in [0, 3010]
+
+- name: Reboot after forest promotion
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+    post_reboot_delay: 60
+  when: forest_promote is changed
+
+- name: Wait for the AD service and the new domain to answer
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $d = Get-ADDomain -ErrorAction Stop
+    Write-Output $d.DNSRoot
+  register: forest_domain_check
+  until: forest_domain_check is succeeded and dc_domain in forest_domain_check.stdout
+  retries: 30
+  delay: 20
+  changed_when: false
+
+- name: Confirm forest promotion
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} is now root of {{ forest_domain_check.stdout | trim }}"

@@ -1,0 +1,27 @@
+---
+# Build OUs, users, groups and GPOs on the primary domain controller.
+# Guarded so it only ever touches the primary domain in a multi-DC run.
+
+- name: Build directory structure
+  when: (dc_domain | default('')) == primary_domain
+  block:
+    - name: Ensure the staging directory exists
+      ansible.windows.win_file:
+        path: C:\Range
+        state: directory
+
+    - name: Render the structure build script
+      ansible.windows.win_template:
+        src: build_structure.ps1.j2
+        dest: C:\Range\build_structure.ps1
+
+    - name: Execute the structure build script
+      ansible.windows.win_shell: |
+        & "C:\Range\build_structure.ps1"
+      register: ad_structure_result
+      changed_when: "'+ ' in (ad_structure_result.stdout | default(''))"
+      failed_when: ad_structure_result.rc != 0
+
+    - name: Show resulting object counts
+      ansible.builtin.debug:
+        msg: "{{ ad_structure_result.stdout_lines | default([]) | last }}"

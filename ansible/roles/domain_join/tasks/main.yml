@@ -1,0 +1,62 @@
+---
+# Join member servers and workstations to the primary domain and place them in
+# the correct OU.
+
+- name: Determine the target OU for this host
+  ansible.builtin.set_fact:
+    join_ou: >-
+      {{ 'OU=Workstations,OU=_LAB,' ~ domain_dn
+         if inventory_hostname in groups['workstations']
+         else 'OU=Servers,OU=_LAB,' ~ domain_dn }}
+  changed_when: false
+
+- name: Read current domain membership
+  ansible.windows.win_shell: |
+    $cs = Get-CimInstance Win32_ComputerSystem
+    "{0}|{1}" -f $cs.PartOfDomain, $cs.Domain
+  register: join_state
+  changed_when: false
+
+- name: Verify the domain is resolvable before attempting a join
+  ansible.windows.win_shell: |
+    try {
+      Resolve-DnsName "{{ primary_domain }}" -ErrorAction Stop | Out-Null
+      "ok"
+    } catch { "fail"; exit 1 }
+  register: dns_check
+  changed_when: false
+  failed_when: join_state.stdout is not search('True')
+
+- name: Join the host to the domain
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $pw = ConvertTo-SecureString "{{ ansible_password }}" -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential(
+      "{{ ansible_user }}@{{ primary_domain }}", $pw)
+    Add-Computer `
+      -DomainName "{{ primary_domain }}" `
+      -Credential $cred `
+      -OUPath "{{ join_ou }}" `
+      -Force
+  register: join_result
+  when: "'True' not in (join_state.stdout | default(''))"
+  failed_when: join_result.rc | default(0) != 0
+
+- name: Reboot after joining
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+    post_reboot_delay: 45
+  when: join_result is changed
+
+- name: Confirm domain membership
+  ansible.windows.win_shell: |
+    $cs = Get-CimInstance Win32_ComputerSystem
+    if (-not $cs.PartOfDomain) { exit 1 }
+    "{0}\{1}" -f $cs.Domain, $cs.Name
+  register: join_verify
+  changed_when: false
+  failed_when: join_verify.rc != 0
+
+- name: Report membership
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} joined: {{ join_verify.stdout | trim }}"

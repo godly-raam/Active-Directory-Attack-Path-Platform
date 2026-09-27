@@ -1,0 +1,10 @@
+# Core engine dependencies.
+networkx>=3.2
+PyYAML>=6.0
+Jinja2>=3.1
+
+# LLM ranking (optional at runtime; engine runs offline without it).
+anthropic>=0.39
+
+# Test/lint extras.
+pytest>=8.0

@@ -1,0 +1,68 @@
+{
+  "meta": { "type": "computers", "count": 5, "version": 5 },
+  "data": [
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-3101",
+      "Properties": {
+        "name": "DC01.CORP.CONTOSO.LAB",
+        "samaccountname": "DC01$",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "isdc": true,
+        "highvalue": true,
+        "dnshostname": "DC01.corp.contoso.lab",
+        "distinguishedname": "OU=Domain Controllers,DC=corp,DC=contoso,DC=lab"
+      },
+      "Sessions": { "Collected": true, "Results": [ { "UserSID": "S-1-5-21-1000-2101" } ] },
+      "PrivilegedSessions": { "Collected": true, "Results": [ { "UserSID": "S-1-5-21-1000-2101" } ] },
+      "LocalAdmins": { "Collected": true, "Results": [ { "ObjectIdentifier": "S-1-5-21-1000-2102" } ] }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-3102",
+      "Properties": {
+        "name": "SRV-APP01.CORP.CONTOSO.LAB",
+        "samaccountname": "SRV-APP01$",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "unconstraineddelegation": true,
+        "dnshostname": "SRV-APP01.corp.contoso.lab",
+        "distinguishedname": "CN=SRV-APP01,OU=Servers,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-3103",
+      "Properties": {
+        "name": "SRV-IIS01.CORP.CONTOSO.LAB",
+        "samaccountname": "SRV-IIS01$",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "trustedtoauth": true,
+        "allowedtodelegate": ["MSSQLSvc/SRV-SQL01.corp.contoso.lab:1433"],
+        "dnshostname": "SRV-IIS01.corp.contoso.lab",
+        "distinguishedname": "CN=SRV-IIS01,OU=Servers,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-3105",
+      "Properties": {
+        "name": "SRV-SQL01.CORP.CONTOSO.LAB",
+        "samaccountname": "SRV-SQL01$",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "dnshostname": "SRV-SQL01.corp.contoso.lab",
+        "distinguishedname": "CN=SRV-SQL01,OU=Servers,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-3104",
+      "Properties": {
+        "name": "WS01.CORP.CONTOSO.LAB",
+        "samaccountname": "WS01$",
+        "domain": "corp.contoso.lab",
+        "enabled": true,
+        "dnshostname": "WS01.corp.contoso.lab",
+        "distinguishedname": "CN=WS01,OU=Workstations,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    }
+  ]
+}

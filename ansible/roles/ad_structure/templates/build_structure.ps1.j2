@@ -1,0 +1,145 @@
+# ==========================================================================
+# Rendered on the control node and executed on the primary DC.
+# Everything is idempotent: re-running creates nothing that already exists.
+# ==========================================================================
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+Import-Module GroupPolicy   -ErrorAction Stop
+
+$DomainFQDN = "{{ primary_domain }}"
+$DomainNetbios = "{{ primary_netbios }}"
+$DomainDN = (Get-ADDomain).DistinguishedName
+
+function Ensure-OUPath([string]$RelPath) {
+    $parent = $DomainDN
+    foreach ($seg in $RelPath.Split('/')) {
+        $dn = "OU=$seg,$parent"
+        if (-not [bool](Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$dn'" -ErrorAction SilentlyContinue)) {
+            New-ADOrganizationalUnit -Name $seg -Path $parent -ProtectedFromAccidentalDeletion $false | Out-Null
+            Write-Output "OU+ $dn"
+        }
+        $parent = $dn
+    }
+}
+
+function Ensure-Group($Name, $OUPath, $Scope, $Category) {
+    if (-not (Get-ADGroup -Filter "SamAccountName -eq '$Name'" -ErrorAction SilentlyContinue)) {
+        New-ADGroup -Name $Name -SamAccountName $Name -GroupScope $Scope -GroupCategory $Category -Path $OUPath | Out-Null
+        Write-Output "GROUP+ $Name"
+    }
+}
+
+function Ensure-User($Sam, $First, $Last, $Dept, $OUPath) {
+    if (-not (Get-ADUser -Filter "SamAccountName -eq '$Sam'" -ErrorAction SilentlyContinue)) {
+        New-ADUser `
+            -Name "$First $Last" `
+            -SamAccountName $Sam `
+            -UserPrincipalName "$Sam@$DomainFQDN" `
+            -GivenName $First `
+            -Surname $Last `
+            -DisplayName "$First $Last" `
+            -Department $Dept `
+            -Path $OUPath `
+            -AccountPassword (ConvertTo-SecureString "{{ user_seed.default_password }}" -AsPlainText -Force) `
+            -Enabled $true `
+            -ChangePasswordAtLogon $false | Out-Null
+        Write-Output "USER+ $Sam"
+    }
+}
+
+function Ensure-GPO($Name, $Comment) {
+    if (-not (Get-GPO -Name $Name -ErrorAction SilentlyContinue)) {
+        New-GPO -Name $Name -Comment $Comment | Out-Null
+        Write-Output "GPO+ $Name"
+    }
+}
+
+# --------------------------------------------------------------------------
+# Organizational units
+# --------------------------------------------------------------------------
+{% for ou in ou_structure %}
+Ensure-OUPath "{{ ou }}"
+{% endfor %}
+
+$UsersOU      = "OU=Users,OU=_LAB,$DomainDN"
+$GroupsOU     = "OU=Groups,OU=_LAB,$DomainDN"
+$SvcOU        = "OU=ServiceAccounts,OU=_LAB,$DomainDN"
+$Tier0OU      = "OU=Tier0,OU=_LAB,$DomainDN"
+
+# --------------------------------------------------------------------------
+# Groups
+# --------------------------------------------------------------------------
+Ensure-Group "Tier1_Admins"      $GroupsOU "Global" "Security"
+Ensure-Group "HelpDesk"          $GroupsOU "Global" "Security"
+Ensure-Group "HR-Team"           $GroupsOU "Global" "Security"
+Ensure-Group "Finance-Team"      $GroupsOU "Global" "Security"
+Ensure-Group "Engineering-Team"  $GroupsOU "Global" "Security"
+Ensure-Group "SQL-Admins"        $GroupsOU "Global" "Security"
+Ensure-Group "Server-Operators"  $GroupsOU "Global" "Security"
+Ensure-Group "Backup-Operators"  $GroupsOU "Global" "Security"
+Ensure-Group "Tier0-Admins"      $Tier0OU "Global" "Security"
+
+# --------------------------------------------------------------------------
+# Users: {{ user_seed.first_names | length }} first x {{ user_seed.last_names | length }} last names
+# --------------------------------------------------------------------------
+{% set depts = ['HR', 'Finance', 'Engineering'] %}
+{% for first in user_seed.first_names %}
+{% for last in user_seed.last_names %}
+{% set sam = (first[0] ~ last) | lower %}
+{% set dept = depts[loop.index0 % 3] %}
+Ensure-User "{{ sam }}" "{{ first }}" "{{ last }}" "{{ dept }}" "OU={{ dept }},$UsersOU"
+{% endfor %}
+{% endfor %}
+
+# --------------------------------------------------------------------------
+# Group memberships. A deliberately small privileged population keeps the
+# BloodHound graph readable while still giving the attack engine real targets.
+# --------------------------------------------------------------------------
+$daMembers = @("{{ (user_seed.first_names[0][0] ~ user_seed.last_names[0]) | lower }}", "{{ (user_seed.first_names[1][0] ~ user_seed.last_names[1]) | lower }}")
+foreach ($u in $daMembers) {
+    $dn = "CN=$u,OU=Engineering,$UsersOU"
+    $existing = Get-ADUser -Identity $u -ErrorAction SilentlyContinue
+    if ($existing -and $existing.DistinguishedName -ne $dn) {
+        Move-ADObject -Identity $existing.DistinguishedName -TargetPath "OU=Engineering,$UsersOU" -ErrorAction SilentlyContinue
+    }
+    Add-ADGroupMember -Identity "Domain Admins" -Members $u -ErrorAction SilentlyContinue
+}
+Add-ADGroupMember -Identity "Tier1_Admins" -Members "{{ (user_seed.first_names[2][0] ~ user_seed.last_names[2]) | lower }}" -ErrorAction SilentlyContinue
+Add-ADGroupMember -Identity "Tier0-Admins" -Members "{{ (user_seed.first_names[3][0] ~ user_seed.last_names[3]) | lower }}" -ErrorAction SilentlyContinue
+Add-ADGroupMember -Identity "HelpDesk" -Members "{{ (user_seed.first_names[4][0] ~ user_seed.last_names[4]) | lower }}" -ErrorAction SilentlyContinue
+Add-ADGroupMember -Identity "SQL-Admins" -Members "{{ (user_seed.first_names[5][0] ~ user_seed.last_names[0]) | lower }}" -ErrorAction SilentlyContinue
+
+# --------------------------------------------------------------------------
+# Group Policy objects
+# --------------------------------------------------------------------------
+{% for gpo in gpos %}
+Ensure-GPO "{{ gpo.name }}" "{{ gpo.comment }}"
+{% endfor %}
+
+# Link the security GPOs at the domain root.
+$links = @("LAB-Baseline-PasswordPolicy", "LAB-Baseline-ScreenLock", "LAB-Sysmon-Audit")
+foreach ($g in $links) {
+    $gpo = Get-GPO -Name $g
+    $linked = Get-GPInheritance -Target $DomainDN | Select-Object -ExpandProperty GpoLinks | Where-Object { $_.DisplayName -eq $g }
+    if (-not $linked) { New-GPLink -Name $g -Target $DomainDN | Out-Null; Write-Output "GPLINK+ $g" }
+}
+
+# Weak legacy SMBv1 setting, linked at the domain root. This is scenario 9's
+# enabler, not a hardening control.
+Ensure-GPO "LAB-Legacy-SMBv1" "Intentionally weak legacy protocol setting."
+Set-GPRegistryValue -Name "LAB-Legacy-SMBv1" `
+    -Key "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" `
+    -ValueName "SMB1" -Type DWord -Value 1 | Out-Null
+$smbLink = Get-GPInheritance -Target $DomainDN | Select-Object -ExpandProperty GpoLinks | Where-Object { $_.DisplayName -eq "LAB-Legacy-SMBv1" }
+if (-not $smbLink) { New-GPLink -Name "LAB-Legacy-SMBv1" -Target $DomainDN | Out-Null }
+
+# --------------------------------------------------------------------------
+# Summary
+# --------------------------------------------------------------------------
+$counts = [pscustomobject]@{
+    Users  = (Get-ADUser  -Filter * | Measure-Object).Count
+    Groups = (Get-ADGroup -Filter * | Measure-Object).Count
+    OUs    = (Get-ADOrganizationalUnit -Filter * | Measure-Object).Count
+    GPOs   = (Get-GPO -All | Measure-Object).Count
+}
+$counts | ConvertTo-Json -Compress

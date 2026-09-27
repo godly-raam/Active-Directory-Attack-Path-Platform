@@ -1,0 +1,87 @@
+---
+# ==========================================================================
+# Non-secret variables for every Windows host.
+#
+# Topology facts (primary_domain, primary_dc, per-host IPs/roles) come from the
+# Terraform-generated inventory. Values here are defaults for offline testing
+# and are overridden by inventory host/group vars.
+# ==========================================================================
+
+# --- Domain (also emitted by Terraform; kept for offline syntax checks) ----
+primary_domain: "corp.contoso.lab"
+primary_netbios: "CORP"
+primary_dc: "DC01"
+primary_dc_ip: "10.10.10.10"
+
+domain_dn: "{{ 'DC=' ~ (primary_domain.split('.') | join(',DC=')) }}"
+
+# Second forest and the child domain, used by the trust scenarios.
+partner_domain: "partner.fabrikam.lab"
+partner_netbios: "PARTNER"
+partner_dc: "DC02"
+child_domain: "emea.corp.contoso.lab"
+child_netbios: "EMEA"
+child_dc: "DC03"
+
+# --- Organizational unit layout -------------------------------------------
+ou_structure:
+  - "_LAB"
+  - "_LAB/Servers"
+  - "_LAB/Workstations"
+  - "_LAB/Users"
+  - "_LAB/Users/HR"
+  - "_LAB/Users/Finance"
+  - "_LAB/Users/Engineering"
+  - "_LAB/ServiceAccounts"
+  - "_LAB/Groups"
+  - "_LAB/Tier0"
+
+# --- Group Policy objects ------------------------------------------------
+gpos:
+  - name: "LAB-Baseline-PasswordPolicy"
+    comment: "Baseline password + lockout policy for the range."
+  - name: "LAB-Baseline-ScreenLock"
+    comment: "15 minute inactivity screen lock."
+  - name: "LAB-Sysmon-Audit"
+    comment: "Advanced audit + Sysmon forwarding placeholder."
+  - name: "LAB-Legacy-SMBv1"
+    comment: "Intentionally weak legacy protocol setting (scenario 9 aid)."
+
+# --- Seed volume ----------------------------------------------------------
+user_seed:
+  first_names: [Alice, Bob, Carol, Dave, Erin, Frank, Grace, Heidi, Ivan, Judy, Karl, Lena]
+  last_names: [Anderson, Brown, Clark, Davis, Evans, Fischer]
+  default_password: "LabUser!2024-ChangeMe"
+  service_password: "SvcP@ssw0rd123"   # deliberately weak for roasting scenarios
+
+# Plaintext that becomes the recoverable cpassword in scenario 9.
+sysvol_gpp_plaintext_password: "GppBackup!2024"
+
+# --- Misconfiguration toggles --------------------------------------------
+# Every scenario is independently switchable so the range can be run clean and
+# then seeded one path at a time for faithful BloodHound diffs.
+misconfig:
+  kerberoast: true
+  asrep: true
+  unconstrained_delegation: true
+  constrained_delegation: true
+  adcs_esc1: true
+  adcs_esc8: true
+  trust_abuse: true
+  acl_abuse: true
+  dcsync: true
+  sysvol_creds: true
+
+# Hosts that carry a specific delegation posture.
+unconstrained_delegation_host: "SRV-APP01"
+constrained_delegation_host: "SRV-IIS01"
+constrained_delegation_target_spn: "MSSQLSvc/SRV-SQL01.corp.contoso.lab:1433"
+
+# --- SharpHound staging ---------------------------------------------------
+sharphound_share_name: "RangeShare"
+sharphound_share_path: "C:\\RangeShare"
+sharphound_zip_name: "range-bloodhound.zip"
+
+# --- WinRM tuning (belt and braces on top of the inventory) ---------------
+ansible_winrm_operation_timeout_sec: 120
+ansible_winrm_read_timeout_sec: 180

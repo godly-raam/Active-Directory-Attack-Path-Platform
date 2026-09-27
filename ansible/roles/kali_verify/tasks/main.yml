@@ -1,0 +1,89 @@
+---
+# ==========================================================================
+# Verify the Kali attack box. This role NEVER installs anything - it only
+# reports what is present and whether the lab is reachable over the VPN.
+# ==========================================================================
+
+- name: Detect offensive-security tooling on the attack box
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      for t in bloodhound bloodhound-python nxc netexec \
+               impacket-secretsdump impacket-GetUserSPNs impacket-GetNPUsers \
+               impacket-ntlmrelayx certipy certipy-ad pypykatz mimikatz rubeus \
+               nmap xfreerdp smbclient openssl; do
+        if command -v "$t" >/dev/null 2>&1; then
+          echo "OK $t -> $(command -v "$t")"
+        else
+          echo "MISSING $t"
+        fi
+      done
+  register: kali_tools
+  changed_when: false
+  failed_when: false
+
+- name: Check Python libraries used by the attack-path engine
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      for m in impacket networkx yaml jinja2 anthropic; do
+        python3 -c "import $m" 2>/dev/null && echo "OK py:$m" || echo "MISSING py:$m"
+      done
+  register: kali_pylibs
+  changed_when: false
+  failed_when: false
+
+- name: Resolve the primary domain from the attack box
+  ansible.builtin.command:
+    cmd: "getent hosts {{ primary_domain }}"
+  register: kali_dns
+  changed_when: false
+  failed_when: false
+
+- name: Probe AD ports on the primary DC over the VPN
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      for p in 53 88 135 139 389 445 464 636 3268 3269 3389 5985; do
+        if timeout 3 bash -c "echo > /dev/tcp/{{ primary_dc_ip }}/$p" 2>/dev/null; then
+          echo "OPEN $p"
+        else
+          echo "CLOSED $p"
+        fi
+      done
+  register: kali_ports
+  changed_when: false
+  failed_when: false
+
+- name: Confirm a VPN client address is present
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      ip -brief address | grep -E '172\.16\.|tun|tap|wg' || echo "NO_VPN_INTERFACE"
+  register: kali_vpn
+  changed_when: false
+  failed_when: false
+
+- name: Attack-box readiness report
+  ansible.builtin.debug:
+    msg:
+      - "== Tools =="
+      - "{{ kali_tools.stdout_lines | default([]) }}"
+      - "== Python libraries =="
+      - "{{ kali_pylibs.stdout_lines | default([]) }}"
+      - "== DNS =="
+      - "{{ kali_dns.stdout | default('unresolved') }}"
+      - "== AD ports on {{ primary_dc_ip }} =="
+      - "{{ kali_ports.stdout_lines | default([]) }}"
+      - "== VPN =="
+      - "{{ kali_vpn.stdout_lines | default([]) }}"
+
+- name: Fail when the DC is unreachable over the VPN
+  ansible.builtin.assert:
+    that:
+      - "'OPEN 445' in (kali_ports.stdout | default(''))"
+    fail_msg: >-
+      The attack box cannot reach {{ primary_dc_ip }}:445. The VPN is probably
+      not connected. Connect the point-to-site VPN (see docs/runbook.md) and
+      re-run with --tags kali.
+    success_msg: "Attack box can reach the primary DC over the VPN."

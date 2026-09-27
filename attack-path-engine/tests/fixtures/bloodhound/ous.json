@@ -1,0 +1,46 @@
+{
+  "meta": { "type": "ous", "count": 4, "version": 5 },
+  "data": [
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-4101",
+      "Properties": {
+        "name": "Engineering",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "OU=Engineering,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      },
+      "Aces": [
+        {
+          "PrincipalSID": "S-1-5-21-1000-2103",
+          "PrincipalType": "User",
+          "RightName": "GenericAll",
+          "AceType": "Allowed",
+          "IsInherited": false
+        }
+      ]
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-4102",
+      "Properties": {
+        "name": "Users",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "OU=Users,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-4103",
+      "Properties": {
+        "name": "_LAB",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    },
+    {
+      "ObjectIdentifier": "S-1-5-21-1000-4104",
+      "Properties": {
+        "name": "ServiceAccounts",
+        "domain": "corp.contoso.lab",
+        "distinguishedname": "OU=ServiceAccounts,OU=_LAB,DC=corp,DC=contoso,DC=lab"
+      }
+    }
+  ]
+}

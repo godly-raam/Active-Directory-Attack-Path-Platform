@@ -1,0 +1,27 @@
+---
+# Scenario 3 - Unconstrained Kerberos delegation.
+#
+# Marks the designated application server as trusted for unconstrained
+# delegation. Any account that authenticates to it caches a reusable TGT.
+
+- name: Seed unconstrained delegation
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.unconstrained_delegation | bool
+  block:
+    - name: Mark the application server trusted for unconstrained delegation
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+        $host = '{{ unconstrained_delegation_host }}'
+        $computer = Get-ADComputer -Identity $host -ErrorAction Stop
+        $before = $computer.TrustedForDelegation
+        Set-ADComputer -Identity $host -TrustedForDelegation $true
+        Write-Output "before=$before after=$((Get-ADComputer -Identity $host).TrustedForDelegation)"
+      register: unconstrained_result
+      changed_when: "'after=False' in (unconstrained_result.stdout | default('')) or 'after=$false' in (unconstrained_result.stdout | default(''))"
+      failed_when: unconstrained_result.rc != 0
+
+    - name: Report delegation state
+      ansible.builtin.debug:
+        msg: "{{ unconstrained_delegation_host }}: {{ unconstrained_result.stdout | trim }}"

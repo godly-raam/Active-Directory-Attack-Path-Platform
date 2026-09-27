@@ -1,0 +1,84 @@
+---
+# Create the CORP <-> PARTNER forest trust.
+#
+# Two things are required and both are easy to forget:
+#   1. Bidirectional DNS name resolution (conditional forwarders).
+#   2. The trust itself, created with SID history enabled so the cross-forest
+#      abuse scenario has a real path to demonstrate.
+#
+# This role assumes the default two-forest topology. Extending to more forests
+# means extending the remote_* fact block below (or making it data-driven from
+# var.forest_trusts emitted by Terraform).
+
+- name: Derive the remote forest coordinates
+  ansible.builtin.set_fact:
+    remote_domain: "{{ partner_domain if (dc_domain | default('')) == primary_domain else primary_domain }}"
+    remote_netbios: "{{ partner_netbios if (dc_domain | default('')) == primary_domain else primary_netbios }}"
+    remote_dc_host: "{{ partner_dc if (dc_domain | default('')) == primary_domain else primary_dc }}"
+  changed_when: false
+
+- name: Resolve the remote DC address from inventory
+  ansible.builtin.set_fact:
+    remote_dc_ip: "{{ hostvars[remote_dc_host].ansible_host }}"
+  changed_when: false
+
+- name: Install DNS management tooling
+  ansible.windows.win_feature:
+    name: RSAT-DNS-Server
+    include_management_tools: true
+    state: present
+
+# --------------------------------------------------------------------------
+# DNS: each forest must be able to resolve the other's namespace.
+# --------------------------------------------------------------------------
+
+- name: Check for an existing conditional forwarder
+  ansible.windows.win_shell: |
+    $z = Get-DnsServerConditionalForwarderZone -Name "{{ remote_domain }}" -ErrorAction SilentlyContinue
+    if ($z) { "present" } else { "absent" }
+  register: remote_forwarder
+  changed_when: false
+
+- name: Add conditional forwarder for the remote forest
+  ansible.windows.win_shell: |
+    Add-DnsServerConditionalForwarderZone `
+      -Name "{{ remote_domain }}" `
+      -MasterServers {{ remote_dc_ip }} `
+      -ReplicationScope Forest
+  when: "'absent' in remote_forwarder.stdout"
+
+# --------------------------------------------------------------------------
+# Trust creation. Done once, from the primary forest root.
+# --------------------------------------------------------------------------
+
+- name: Create the two-way forest trust with SID history enabled
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $out = netdom trust {{ primary_domain }} /domain:{{ partner_domain }} `
+      /add /twoway /ForestTransitive:yes /EnableSIDHistory:yes /quarantine:no `
+      /userO:{{ primary_netbios }}\{{ ansible_user }} /passwordO:"{{ ansible_password }}" `
+      /userD:{{ partner_netbios }}\{{ ansible_user }} /passwordD:"{{ ansible_password }}" 2>&1
+    Write-Output $out
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  register: trust_create
+  changed_when: "'The command completed successfully' in (trust_create.stdout | default(''))"
+  when: (dc_domain | default('')) == primary_domain
+  failed_when: trust_create.rc | default(0) not in [0]
+
+# --------------------------------------------------------------------------
+# Verification
+# --------------------------------------------------------------------------
+
+- name: Verify the trust exists and is healthy
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    $t = Get-ADTrust -Filter * | Where-Object { $_.Target -eq "{{ remote_domain }}" }
+    if (-not $t) { Write-Output "missing"; exit 1 }
+    Write-Output ("{0} direction={1} sidfiltering={2}" -f $t.Target, $t.Direction, $t.SIDFilteringQuarantined)
+  register: trust_verify
+  changed_when: false
+  failed_when: "'missing' in trust_verify.stdout"
+
+- name: Report trust state
+  ansible.builtin.debug:
+    msg: "Trust {{ inventory_hostname }} -> {{ remote_domain }}: {{ trust_verify.stdout | trim }}"

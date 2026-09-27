@@ -1,0 +1,54 @@
+---
+# Scenario 6 - Cross-forest trust abuse.
+#
+# The trust itself (with SID history enabled) is created by ad_trust. This role
+# adds the abuse *path*: a principal that exists in the partner forest is made a
+# member of a privileged group in the primary forest. That foreign security
+# principal membership is what BloodHound renders as a cross-forest edge.
+
+- name: Seed cross-forest trust abuse path
+  when:
+    - (dc_domain | default('')) == primary_domain
+    - misconfig.trust_abuse | bool
+  block:
+    - name: Create a partner-forest principal and add it to a primary-forest group
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module ActiveDirectory
+
+        $partner = '{{ partner_domain }}'
+        $partnerDN = (Get-ADDomain -Server $partner).DistinguishedName
+        $partnerCred = New-Object System.Management.Automation.PSCredential(
+          "{{ ansible_user }}@$partner",
+          (ConvertTo-SecureString "{{ ansible_password }}" -AsPlainText -Force))
+
+        $vendor = 'vendor_svc'
+        if (-not (Get-ADUser -Server $partner -Filter "SamAccountName -eq '$vendor'" -ErrorAction SilentlyContinue)) {
+          New-ADUser -Server $partner -Credential $partnerCred `
+            -Name $vendor -SamAccountName $vendor `
+            -UserPrincipalName "$vendor@$partner" `
+            -Path "CN=Users,$partnerDN" `
+            -AccountPassword (ConvertTo-SecureString '{{ user_seed.service_password }}' -AsPlainText -Force) `
+            -Enabled $true -PasswordNeverExpires $true
+          Write-Output "CREATED $vendor in $partner"
+        }
+
+        $sid = (Get-ADUser -Server $partner -Identity $vendor).SID
+        $group = Get-ADGroup -Identity 'Backup-Operators'
+        $members = Get-ADGroupMember -Identity $group
+        if ($members.SID -notcontains $sid) {
+          Add-ADGroupMember -Identity $group -Members $sid
+          Write-Output "ADDED $($sid.Value) to Backup-Operators"
+        } else {
+          Write-Output "PRESENT already a member"
+        }
+
+        $trust = Get-ADTrust -Filter * | Where-Object { $_.Target -eq $partner }
+        Write-Output ("TRUST direction={0} sidhistory={1}" -f $trust.Direction, $trust.SIDFilteringQuarantined)
+      register: trust_abuse_result
+      changed_when: "'ADDED' in (trust_abuse_result.stdout | default('')) or 'CREATED' in (trust_abuse_result.stdout | default(''))"
+      failed_when: trust_abuse_result.rc != 0
+
+    - name: Report trust abuse path
+      ansible.builtin.debug:
+        msg: "{{ trust_abuse_result.stdout_lines | default([]) }}"
