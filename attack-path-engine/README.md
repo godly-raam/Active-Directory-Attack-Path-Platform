@@ -26,7 +26,7 @@ source .venv/bin/activate
 pip install -e ".[dev,llm]"
 ```
 
-Python 3.10+ is required. `anthropic` is optional at runtime: if it is missing
+Python 3.10+ is required. `litellm` is optional at runtime: if it is missing
 or no key is configured, the engine silently falls back to deterministic
 ranking.
 
@@ -103,11 +103,32 @@ project-scoped:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `USER_LLM_API_KEY` | _(none)_ | Your own key. No key ⇒ deterministic mode. |
-| `USER_LLM_BASE_URL` | `https://api.anthropic.com` | Provider endpoint |
-| `USER_LLM_MODEL` | `claude-sonnet-5` | Model name |
+| `AP_ENGINE_LLM_PROVIDER` | `anthropic` | LiteLLM provider name. |
+| `USER_LLM_API_KEY` | _(none)_ | Your provider key. No key ⇒ deterministic mode. |
+| `USER_LLM_BASE_URL` | _(none)_ | Optional provider endpoint (for example, an Ollama URL). |
+| `USER_LLM_MODEL` | `claude-sonnet-5` | LiteLLM model string, passed through unchanged. |
 | `AP_ENGINE_OFFLINE` | `0` | `1`/`true` forces deterministic mode |
 | `AP_ENGINE_TOP_N` | `15` | Max candidate paths sent to the LLM (cost control) |
+
+### Provider examples
+
+```dotenv
+# Anthropic (default)
+AP_ENGINE_LLM_PROVIDER=anthropic
+USER_LLM_API_KEY=your-anthropic-key
+USER_LLM_MODEL=claude-sonnet-5
+
+# OpenAI
+AP_ENGINE_LLM_PROVIDER=openai
+USER_LLM_API_KEY=your-openai-key
+USER_LLM_MODEL=gpt-4o
+
+# Local Ollama
+AP_ENGINE_LLM_PROVIDER=ollama
+USER_LLM_API_KEY=unused
+USER_LLM_BASE_URL=http://localhost:11434
+USER_LLM_MODEL=ollama/llama3
+```
 
 > **Credential hygiene.** The engine reads only `USER_LLM_*`/`AP_ENGINE_*`. It
 > must never read the coding agent's own `MCAI_LLM_*` variables, and a test

@@ -175,27 +175,26 @@ def rank_paths(
         return _offline_rank(paths, findings), False, "deterministic"
 
     try:
-        from anthropic import Anthropic
+        from litellm import completion
     except ImportError:
-        return _offline_rank(paths, findings), False, "deterministic (anthropic not installed)"
+        return _offline_rank(paths, findings), False, "deterministic (litellm not installed)"
 
     try:
-        client_kwargs = {"api_key": config.api_key}
-        if config.base_url:
-            client_kwargs["base_url"] = config.base_url
-        client = Anthropic(**client_kwargs)
-        response = client.messages.create(
+        response = completion(
             model=config.model,
-            max_tokens=4000,
-            system=_SYSTEM,
             messages=[
+                {"role": "system", "content": _SYSTEM},
                 {
                     "role": "user",
                     "content": f"{_INSTRUCTIONS}\n\nINPUT:\n{_build_payload(paths, findings)}",
-                }
+                },
             ],
+            api_key=config.api_key,
+            base_url=config.base_url,
+            custom_llm_provider=config.provider,
+            max_tokens=4000,
         )
-        text = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+        text = response.choices[0].message.content
         items = _extract_json(text)
     except Exception as exc:  # noqa: BLE001 - degrade gracefully to deterministic
         fallback = _offline_rank(paths, findings)

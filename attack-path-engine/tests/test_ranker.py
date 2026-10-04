@@ -32,17 +32,22 @@ def test_llm_enabled_requires_key():
     assert Config(api_key="sk-test", offline=True).llm_enabled is False
 
 
-def _fake_anthropic(text):
-    class _Messages:
-        def create(self, **_kwargs):
-            block = SimpleNamespace(type="text", text=text)
-            return SimpleNamespace(content=[block])
+def test_missing_litellm_degrades_to_deterministic(monkeypatch, graph):
+    paths = find_paths(graph)
+    monkeypatch.setitem(sys.modules, "litellm", None)
+    ranked, used_llm, model = rank_paths(paths, [], Config(api_key="sk-test"))
+    assert used_llm is False
+    assert model == "deterministic (litellm not installed)"
+    assert ranked
 
-    class _Client:
-        def __init__(self, **_kwargs):
-            self.messages = _Messages()
 
-    return SimpleNamespace(Anthropic=_Client)
+def _fake_litellm(text, calls=None):
+    def completion(**kwargs):
+        if calls is not None:
+            calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+
+    return SimpleNamespace(completion=completion)
 
 
 def test_llm_response_is_used_when_parseable(monkeypatch, graph):
@@ -63,10 +68,15 @@ def test_llm_response_is_used_when_parseable(monkeypatch, graph):
             for path in paths
         ]
     )
-    monkeypatch.setitem(sys.modules, "anthropic", _fake_anthropic(payload))
-    ranked, used_llm, model = rank_paths(paths, [], Config(api_key="sk-test", model="claude-test"))
+    calls = []
+    monkeypatch.setitem(sys.modules, "litellm", _fake_litellm(payload, calls))
+    ranked, used_llm, model = rank_paths(
+        paths, [], Config(api_key="sk-test", model="gpt-4o", provider="openai")
+    )
     assert used_llm is True
-    assert model == "claude-test"
+    assert model == "gpt-4o"
+    assert calls[0]["model"] == "gpt-4o"
+    assert calls[0]["custom_llm_provider"] == "openai"
     assert all(item.origin == "llm" for item in ranked)
     assert ranked[0].explanation == "model explanation"
 
@@ -74,11 +84,10 @@ def test_llm_response_is_used_when_parseable(monkeypatch, graph):
 def test_llm_failure_degrades_to_deterministic(monkeypatch, graph):
     paths = find_paths(graph)
 
-    class _Boom:
-        def __init__(self, **_kwargs):
-            raise RuntimeError("network down")
+    def boom(**_kwargs):
+        raise RuntimeError("network down")
 
-    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=_Boom))
+    monkeypatch.setitem(sys.modules, "litellm", SimpleNamespace(completion=boom))
     ranked, used_llm, model = rank_paths(paths, [], Config(api_key="sk-test", model="claude-test"))
     assert used_llm is False
     assert model == "deterministic (llm error)"
@@ -88,7 +97,7 @@ def test_llm_failure_degrades_to_deterministic(monkeypatch, graph):
 
 def test_llm_empty_parse_degrades(monkeypatch, graph):
     paths = find_paths(graph)
-    monkeypatch.setitem(sys.modules, "anthropic", _fake_anthropic("no json here"))
+    monkeypatch.setitem(sys.modules, "litellm", _fake_litellm("no json here"))
     ranked, used_llm, model = rank_paths(paths, [], Config(api_key="sk-test", model="claude-test"))
     assert used_llm is False
     assert model == "deterministic (llm error)"

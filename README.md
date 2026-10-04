@@ -2,6 +2,16 @@
 
 # Azure Active Directory Cyber Range
 
+## Try it in 30 seconds (no Azure, no API key needed)
+
+```bash
+pip install -e attack-path-engine/
+ap-engine analyze --bloodhound attack-path-engine/tests/fixtures/bloodhound --out ./demo-report
+open ./demo-report/attack-path-report.html
+```
+
+The bundled BloodHound fixture produces a ranked report entirely offline.
+
 A fully automated, infrastructure-as-code Active Directory lab in Azure with
 nine deliberately seeded misconfigurations, plus an attack-path engine that
 ingests BloodHound output and uses an LLM to rank and explain escalation paths.
