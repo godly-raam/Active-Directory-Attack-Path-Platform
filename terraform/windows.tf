@@ -80,6 +80,10 @@ resource "azurerm_marketplace_agreement" "win11" {
 # Network interfaces (static IPs, no public IPs anywhere)
 # --------------------------------------------------------------------------
 
+# trivy:ignore:AZU-0068 NSGs are applied at the subnet level (see
+# network.tf azurerm_subnet_network_security_group_association), which
+# covers all NICs in each subnet.
+#trivy:ignore:AZU-0068
 resource "azurerm_network_interface" "vm" {
   for_each = local.vm_specs
 

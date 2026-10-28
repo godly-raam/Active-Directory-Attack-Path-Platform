@@ -18,6 +18,10 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.5"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
 
   # Remote state is optional for a short-lived lab. If you enable it, keep the

@@ -36,6 +36,11 @@ resource "random_string" "kv_suffix" {
 # Key Vault - the only place credentials live at rest
 # ==========================================================================
 
+data "http" "deployer_ip" {
+  url        = "https://ipv4.icanhazip.com"
+  depends_on = [azurerm_resource_group.range]
+}
+
 resource "azurerm_key_vault" "range" {
   name                = "kv-${local.name_prefix}-${random_string.kv_suffix.result}"
   location            = azurerm_resource_group.range.location
@@ -48,6 +53,13 @@ resource "azurerm_key_vault" "range" {
   purge_protection_enabled   = false
   soft_delete_retention_days = 7
   enable_rbac_authorization  = false
+
+  # Only Azure services and the public IP seen by the last apply can reach this vault.
+  network_acls {
+    default_action = "Deny"
+    bypass         = "AzureServices"
+    ip_rules       = ["${trimspace(data.http.deployer_ip.response_body)}/32"]
+  }
 
   tags = local.common_tags
 }
